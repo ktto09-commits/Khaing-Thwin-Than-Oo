@@ -1,0 +1,8 @@
+{
+  "name": "Temperature Record",
+  "description": "A progressive web app for tracking industrial freezer and chiller temperatures and maintenance logs with AI-powered anomaly detection.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

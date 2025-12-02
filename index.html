@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="https://lucide.dev/favicon.svg" />
+    <!-- Updated viewport: disabled user scaling and added viewport-fit=cover for notches -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="./manifest.json" />
+    <title>ColdChain Guardian</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Native App Feel */
+      body {
+        /* Prevent bounce scroll in some webviews if not needed */
+        overscroll-behavior-y: none;
+        /* Remove tap highlight color on Android */
+        -webkit-tap-highlight-color: transparent;
+        /* Prevent text selection (makes it feel like an app, not a website) */
+        user-select: none;
+        /* Handle safe areas for notches */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+      /* Re-enable text selection for inputs so users can edit text */
+      input, textarea {
+        user-select: text;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50 text-slate-900 antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          // Use relative path and catch errors to prevent Origin mismatch in previews
+          navigator.serviceWorker.register('./sw.js').catch(err => {
+            console.log('SW registration prevented by environment:', err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
