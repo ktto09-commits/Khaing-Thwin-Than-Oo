@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Trash2, Shield, User as UserIcon, Save, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
+import { X, UserPlus, Trash2, Shield, User as UserIcon, Save, AlertTriangle, RefreshCw, Loader2, Activity, CheckCircle2, XCircle, CloudLightning, Key, CloudUpload } from 'lucide-react';
 import { getUsers, addUser, removeUser, syncUsersFromCloud } from '../services/authService';
+import { checkAiStatus, resetAiClient } from '../services/geminiService';
+import { resetAllSyncStatus, saveApiKey, getStoredApiKey, uploadApiKeyToCloud } from '../services/storageService';
 import { User, UserRole } from '../types';
 
 interface Props {
@@ -14,9 +16,14 @@ export const AdminPanel: React.FC<Props> = ({ onClose, onOpenSheetSetup }) => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [resyncMsg, setResyncMsg] = useState('');
+  const [aiStatus, setAiStatus] = useState<{status: 'idle' | 'checking' | 'ok' | 'error', message: string}>({ status: 'idle', message: '' });
+  const [apiKey, setApiKey] = useState('');
+  const [isUploadingKey, setIsUploadingKey] = useState(false);
 
   useEffect(() => {
     refreshUsers();
+    setApiKey(getStoredApiKey());
   }, []);
 
   const refreshUsers = () => {
@@ -28,6 +35,44 @@ export const AdminPanel: React.FC<Props> = ({ onClose, onOpenSheetSetup }) => {
     await syncUsersFromCloud();
     refreshUsers();
     setIsSyncing(false);
+  };
+
+  const handleForceResync = () => {
+    if (confirm("This will attempt to re-upload ALL local logs to the Google Sheet. Use this only if data is missing on the sheet after a script update.")) {
+        resetAllSyncStatus();
+        setResyncMsg("Logs marked as pending. Click 'Refresh Data' on home screen.");
+        setTimeout(() => setResyncMsg(''), 5000);
+    }
+  };
+
+  const handleTestAi = async () => {
+    setAiStatus({ status: 'checking', message: 'Testing connection...' });
+    const result = await checkAiStatus();
+    setAiStatus({
+        status: result.ok ? 'ok' : 'error',
+        message: result.message
+    });
+  };
+
+  const handleSaveApiKey = async (shareToCloud: boolean) => {
+    if (!apiKey) return;
+    
+    // Local Save
+    saveApiKey(apiKey);
+    resetAiClient();
+    
+    // Cloud Upload
+    if (shareToCloud) {
+        setIsUploadingKey(true);
+        const success = await uploadApiKeyToCloud(apiKey);
+        setIsUploadingKey(false);
+        if (success) alert("API Key Saved & Synced to Cloud. Other devices will get it when they refresh data.");
+        else alert("Saved locally, but Cloud Upload failed. Check Sheet connection.");
+    } else {
+        alert("API Key saved locally.");
+    }
+    
+    handleTestAi();
   };
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -79,6 +124,47 @@ export const AdminPanel: React.FC<Props> = ({ onClose, onOpenSheetSetup }) => {
         <div className="grid md:grid-cols-2 gap-6">
           {/* Create User Column */}
           <div className="space-y-4">
+            
+            {/* System Health Section */}
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
+                 <h3 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <Activity size={16} /> System Diagnostics
+                 </h3>
+                 <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                        <span className="text-sm text-slate-600">AI Connection</span>
+                        <button 
+                           onClick={handleTestAi}
+                           disabled={aiStatus.status === 'checking'}
+                           className="text-xs bg-white border px-2 py-1 rounded shadow-sm hover:bg-slate-50 font-bold text-slate-600"
+                        >
+                            {aiStatus.status === 'checking' ? 'Testing...' : 'Test Now'}
+                        </button>
+                    </div>
+                    {aiStatus.status !== 'idle' && (
+                        <div className={`text-xs p-2 rounded border flex items-center gap-2
+                           ${aiStatus.status === 'ok' ? 'bg-green-50 text-green-700 border-green-200' : 
+                             aiStatus.status === 'checking' ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                           {aiStatus.status === 'ok' ? <CheckCircle2 size={14}/> : aiStatus.status === 'error' ? <XCircle size={14}/> : <Loader2 size={14} className="animate-spin"/>}
+                           {aiStatus.message}
+                        </div>
+                    )}
+                    
+                    <div className="border-t border-slate-200 pt-2 mt-2">
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm text-slate-600">Data Recovery</span>
+                            <button
+                                onClick={handleForceResync}
+                                className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-1 rounded font-bold hover:bg-orange-200"
+                            >
+                                Force Resync All Logs
+                            </button>
+                        </div>
+                        {resyncMsg && <p className="text-[10px] text-orange-600 mt-1">{resyncMsg}</p>}
+                    </div>
+                 </div>
+            </div>
+
             <h3 className="font-bold text-slate-700 border-b pb-2">Create New User</h3>
             <form onSubmit={handleAddUser} className="space-y-3">
               <div>
@@ -140,15 +226,46 @@ export const AdminPanel: React.FC<Props> = ({ onClose, onOpenSheetSetup }) => {
 
             <div className="mt-6 pt-4 border-t">
               <h3 className="font-bold text-slate-700 mb-2">System Config</h3>
+              
               <button 
                 onClick={onOpenSheetSetup}
-                className="w-full py-3 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg font-bold flex items-center justify-center gap-2 text-sm border border-slate-200"
+                className="w-full py-3 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg font-bold flex items-center justify-center gap-2 text-sm border border-slate-200 mb-4"
               >
                 <Save size={16} /> Configure Google Sheet
               </button>
-              <p className="text-xs text-slate-400 mt-2">
-                Only admins can change the backend Google Sheet URL.
-              </p>
+
+              <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                 <h4 className="font-bold text-purple-900 text-xs flex items-center gap-1 mb-2">
+                    <Key size={12}/> Gemini API Key
+                 </h4>
+                 <div className="flex gap-2 mb-2">
+                    <input 
+                       type="password" 
+                       value={apiKey}
+                       onChange={(e) => setApiKey(e.target.value)}
+                       className="flex-1 p-2 text-xs border border-purple-200 rounded"
+                       placeholder="Paste API Key here..."
+                    />
+                 </div>
+                 <div className="flex gap-2">
+                    <button 
+                        onClick={() => handleSaveApiKey(false)}
+                        className="flex-1 bg-white text-purple-700 border border-purple-200 px-3 py-1.5 rounded text-xs font-bold hover:bg-purple-50"
+                    >
+                        Save Locally
+                    </button>
+                    <button 
+                        onClick={() => handleSaveApiKey(true)}
+                        disabled={isUploadingKey}
+                        className="flex-1 bg-purple-600 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-purple-700 flex items-center justify-center gap-1"
+                    >
+                        {isUploadingKey ? <Loader2 size={12} className="animate-spin"/> : <CloudUpload size={12}/>} Save & Sync to Cloud
+                    </button>
+                 </div>
+                 <p className="text-[10px] text-purple-600 mt-2 leading-tight">
+                    "Sync to Cloud" stores the key in the <strong>Config</strong> sheet so other devices can download it automatically.
+                 </p>
+              </div>
             </div>
           </div>
 

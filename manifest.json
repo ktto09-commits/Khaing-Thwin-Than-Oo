@@ -1,11 +1,11 @@
 {
-  "name": "ColdChain Guardian",
-  "short_name": "ColdChain",
+  "name": "Facility Logbook",
+  "short_name": "FacilityLog",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#0f172a",
-  "description": "Industrial freezer and chiller tracking logbook.",
+  "description": "Industrial logbook for tracking freezers, chillers, generators, and energy meters.",
   "orientation": "portrait",
   "icons": [
     {

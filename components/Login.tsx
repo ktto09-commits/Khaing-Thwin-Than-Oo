@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
-import { Snowflake, Lock, User as UserIcon, LogIn, AlertCircle, Loader2 } from 'lucide-react';
+import { Building2, Lock, User as UserIcon, LogIn, AlertCircle, Loader2 } from 'lucide-react';
 import { login, syncUsersFromCloud } from '../services/authService';
+import { syncConfigsFromCloud, initializeData } from '../services/storageService';
 import { User } from '../types';
 
 interface Props {
@@ -15,9 +17,17 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
   const [syncing, setSyncing] = useState(true);
 
   useEffect(() => {
-    // Attempt to sync users from cloud when login screen loads
+    // Attempt to sync users and configs (Generators, Machines, Meters) from cloud when login screen loads
     const load = async () => {
-      await syncUsersFromCloud();
+      initializeData(); // Ensure defaults exist
+      try {
+        await Promise.all([
+          syncUsersFromCloud(),
+          syncConfigsFromCloud()
+        ]);
+      } catch (e) {
+        console.warn("Pre-login sync partial failure", e);
+      }
       setSyncing(false);
     };
     load();
@@ -45,14 +55,14 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
         <div className="bg-blue-600 p-8 text-center relative">
           <div className="mx-auto bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center backdrop-blur-sm mb-4">
-            <Snowflake size={32} className="text-white" />
+            <Building2 size={32} className="text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">ColdChain Guardian</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Facility Logbook</h1>
           <p className="text-blue-100 text-sm mt-1">Industrial Logbook & AI Assistant</p>
           
           {syncing && (
              <div className="absolute top-4 right-4 flex items-center gap-1 text-[10px] text-blue-200 bg-blue-700/50 px-2 py-1 rounded-full">
-               <Loader2 size={10} className="animate-spin" /> Syncing Users...
+               <Loader2 size={10} className="animate-spin" /> Syncing Data...
              </div>
           )}
         </div>

@@ -30,12 +30,13 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
   // Data for chart (Temperature only)
   const chartData = machineLogs
     .filter((l): l is TemperatureRecord => l.recordType === RecordType.TEMPERATURE)
-    .slice(0, 20) // Last 20 points
+    .slice(0, 100) // Increased to 100 to show "Yesterday or more" data points clearly
     .reverse()
     .map((l) => ({
-      time: new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+      time: new Date(l.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', month: 'numeric', day: 'numeric'}),
       temp: l.currentTemp,
-      setpoint: l.setpointTemp
+      setpoint: l.setpointTemp,
+      isAnomaly: l.isAnomaly
     }));
 
   const handleGenerateReport = async () => {
@@ -54,7 +55,11 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
     }
   };
 
-  const renderOverview = () => (
+  const renderOverview = () => {
+    const latestTempLog = machineLogs.find(l => l.recordType === RecordType.TEMPERATURE) as TemperatureRecord | undefined;
+    const isLatestAnomaly = latestTempLog?.isAnomaly;
+
+    return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       {/* Action Buttons */}
@@ -88,14 +93,17 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-           <p className="text-xs text-slate-500 uppercase tracking-wide font-bold">Latest Reading</p>
-           {machineLogs.find(l => l.recordType === RecordType.TEMPERATURE) ? (
+        <div className={`p-4 rounded-xl border shadow-sm transition-all ${isLatestAnomaly ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+           <p className={`text-xs uppercase tracking-wide font-bold flex items-center gap-1 ${isLatestAnomaly ? 'text-red-600' : 'text-slate-500'}`}>
+              Latest Reading
+              {isLatestAnomaly && <AlertTriangle size={12} className="animate-pulse" />}
+           </p>
+           {latestTempLog ? (
              <div className="mt-1">
-               <span className="text-3xl font-bold text-slate-800">
-                 {(machineLogs.find(l => l.recordType === RecordType.TEMPERATURE) as TemperatureRecord).currentTemp}°C
+               <span className={`text-3xl font-bold ${isLatestAnomaly ? 'text-red-700' : 'text-slate-800'}`}>
+                 {latestTempLog.currentTemp}°C
                </span>
-               <span className="text-xs text-slate-400 ml-1">Target: {machine.defaultSetpoint}°</span>
+               <span className={`text-xs ml-1 ${isLatestAnomaly ? 'text-red-500' : 'text-slate-400'}`}>Target: {machine.defaultSetpoint}°</span>
              </div>
            ) : <span className="text-slate-400 italic">No data</span>}
         </div>
@@ -113,11 +121,11 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
       {/* Chart */}
       {chartData.length > 0 && (
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm h-72">
-          <h4 className="text-sm font-bold text-slate-500 mb-4">Temperature Trend (Last 20)</h4>
+          <h4 className="text-sm font-bold text-slate-500 mb-4">Temperature Trend (Last 100)</h4>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0"/>
-              <XAxis dataKey="time" tick={{fontSize: 10}} stroke="#94a3b8" />
+              <XAxis dataKey="time" tick={{fontSize: 9}} stroke="#94a3b8" />
               <YAxis domain={['auto', 'auto']} tick={{fontSize: 10}} stroke="#94a3b8" />
               <Tooltip 
                 contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
@@ -129,7 +137,7 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
                 y={machine.defaultSetpoint} 
                 stroke="red" 
                 strokeDasharray="3 3" 
-                label={{ position: 'insideBottomRight',  value: 'Default Target', fill: 'red', fontSize: 10 }} 
+                label={{ position: 'insideBottomRight',  value: 'Target', fill: 'red', fontSize: 10 }} 
               />
               
               {/* Line for the actual setpoint recorded at that time */}
@@ -151,7 +159,13 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
                 name="Temperature"
                 stroke="#2563eb" 
                 strokeWidth={2} 
-                dot={{r: 3, fill: '#2563eb'}} 
+                dot={(props: any) => {
+                  const { cx, cy, payload } = props;
+                  if (payload.isAnomaly) {
+                    return <circle cx={cx} cy={cy} r={4} fill="#ef4444" stroke="white" strokeWidth={2} />;
+                  }
+                  return <circle cx={cx} cy={cy} r={3} fill="#2563eb" />;
+                }}
                 activeDot={{r: 5}} 
               />
             </LineChart>
@@ -184,11 +198,11 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
       <div>
         <div className="flex justify-between items-end mb-3">
           <h4 className="font-bold text-slate-700 flex items-center gap-2">
-            <History size={18} /> Recent Activity
+            <History size={18} /> Recent Activity (Last 50)
           </h4>
         </div>
         <div className="space-y-3">
-          {machineLogs.slice(0, 5).map(log => (
+          {machineLogs.slice(0, 50).map(log => (
             <div key={log.id} className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm flex justify-between items-start gap-2">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -216,7 +230,9 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
                        {(log as TemperatureRecord).currentTemp}°C
                      </span>
                      {(log as TemperatureRecord).isAnomaly && (
-                       <span className="ml-2 text-xs text-red-600 font-bold bg-red-50 px-1 rounded">⚠ Anomaly</span>
+                       <span className="ml-2 text-xs text-red-600 font-bold bg-red-50 px-1 rounded flex-inline items-center gap-1">
+                         <AlertTriangle size={10} /> Anomaly
+                       </span>
                      )}
                      {log.notes && <p className="text-xs text-slate-500 mt-1 italic">"{log.notes}"</p>}
                    </div>
@@ -292,7 +308,8 @@ export const MachineDetail: React.FC<Props> = ({ machine, logs, onBack, onAddLog
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   // Main Render Switch
   if (activeTab === 'LOG_TEMP') {

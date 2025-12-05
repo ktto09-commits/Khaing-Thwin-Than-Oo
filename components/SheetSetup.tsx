@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { X, Save, Copy, Check, Link, Info } from 'lucide-react';
+import { X, Save, Copy, Check, Link, Info, AlertTriangle } from 'lucide-react';
 import { saveSheetUrl, getSheetUrl } from '../services/storageService';
 
 interface Props {
@@ -7,12 +8,11 @@ interface Props {
 }
 
 const GAS_SCRIPT_CODE = `/**
- * COLDCHAIN GUARDIAN BACKEND v3
- * Handles Logs, User Management, and Machine Configuration
+ * FACILITY LOGBOOK BACKEND v14
+ * Updates: Full Generator List Initialization with Filter Specs
  */
 
 function setup() {
-  // Run this once to grant permissions
   DriveApp.getRootFolder(); 
   SpreadsheetApp.getActiveSpreadsheet();
   console.log("Permissions granted!");
@@ -28,123 +28,213 @@ function doPost(e) {
     var action = payload.action;
     var result = { success: true };
     
-    // ----------------------------------------
-    // ACTION: SYNC_LOGS
-    // ----------------------------------------
+    // --- MACHINE LOGS ---
     if (action === 'SYNC_LOGS') {
       var sheet = ensureSheet(ss, "Logs");
-      // Headers
+      var headers = ["Machine Name", "Date/Time", "Recorded By", "Type", "Temp/Issue", "Target/Severity", "Notes/Action", "AI Notes", "Photo Evidence", "Log ID", "Machine ID", "ISO Timestamp"];
+      
       if (sheet.getLastRow() === 0) {
-        sheet.appendRow(["Machine Name", "Date/Time", "Recorded By", "Type", "Temp/Issue", "Target/Severity", "Notes/Action", "AI Notes", "Photo Evidence"]);
+        sheet.appendRow(headers);
+      } else if (sheet.getRange(1, 1).getValue() !== headers[0]) {
+        sheet.insertRowBefore(1);
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       }
       
       var logs = payload.data || [];
       logs.forEach(function(row) {
-        var photoUrl = "";
-        if (row.photo) {
-          try {
-            var decoded = Utilities.base64Decode(row.photo);
-            var blob = Utilities.newBlob(decoded, "image/jpeg", row.machine + " - " + row.date + ".jpg");
-            var file = DriveApp.createFile(blob);
-            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-            photoUrl = file.getUrl();
-          } catch (err) {
-            photoUrl = "Error: " + err.toString();
-          }
-        }
+        var photoUrl = processPhoto(row.photo, (row.machine || "Unknown") + " " + row.date);
         sheet.appendRow([
-          row.machine,
-          row.date,
-          row.recordedBy || "Unknown",
-          row.type,
-          row.value,
-          row.target,
-          row.notes,
-          row.ai,
-          photoUrl
+          row.machine || "Unknown", 
+          row.date || "", 
+          row.recordedBy || "Unknown", 
+          row.type || "", 
+          row.value || "", 
+          row.target || "", 
+          row.notes || "", 
+          row.ai || "", 
+          photoUrl, 
+          row.id || "", 
+          row.machineId || "", 
+          row.timestamp || ""
         ]);
       });
     }
+    else if (action === 'GET_LOGS') {
+      var sheet = ensureSheet(ss, "Logs");
+      result.logs = getLastRows(sheet, 2000);
+    }
+
+    // --- METER LOGS ---
+    else if (action === 'SYNC_METER_LOGS') {
+      var sheet = ensureSheet(ss, "MeterLogs");
+      var headers = ["Date/Time", "Meter Name", "Reading", "Recorded By", "Photo", "Log ID", "Meter ID", "ISO Timestamp"];
+      
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(headers);
+      } else if (sheet.getRange(1, 1).getValue() !== headers[0]) {
+        sheet.insertRowBefore(1);
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      }
+      
+      var logs = payload.data || [];
+      logs.forEach(function(row) {
+        var photoUrl = processPhoto(row.photo, "Meter " + (row.meterName || "") + " " + row.date);
+        sheet.appendRow([
+          row.date || "", 
+          row.meterName || "Unknown", 
+          row.value || 0, 
+          row.recordedBy || "", 
+          photoUrl, 
+          row.id || "", 
+          row.meterId || "", 
+          row.timestamp || ""
+        ]);
+      });
+    }
+    else if (action === 'GET_METER_LOGS') {
+      var sheet = ensureSheet(ss, "MeterLogs");
+      result.logs = getLastRows(sheet, 1000);
+    }
+
+    // --- GENERATOR LOGS ---
+    else if (action === 'SYNC_GEN_LOGS') {
+      var sheet = ensureSheet(ss, "GeneratorLogs");
+      var headers = ["Date/Time", "Generator Name", "Type", "Run Hours", "Notes/Service Type", "Parts/Details", "Recorded By", "Photo", "AI Advice", "Log ID", "Gen ID", "ISO Timestamp"];
+      
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(headers);
+      } else if (sheet.getRange(1, 1).getValue() !== headers[0]) {
+        sheet.insertRowBefore(1);
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      }
+      
+      var logs = payload.data || [];
+      logs.forEach(function(row) {
+         var photoUrl = processPhoto(row.photo, "Gen " + (row.genName || "") + " " + row.date);
+         var runHoursVal = (row.runHours !== undefined && row.runHours !== null) ? row.runHours : "";
+         
+         sheet.appendRow([
+            row.date || "", 
+            row.genName || "Unknown Gen", 
+            row.type || "", 
+            runHoursVal, 
+            row.notes || "", 
+            row.parts || "", 
+            row.recordedBy || "", 
+            photoUrl, 
+            row.ai || "",
+            row.id || "", 
+            row.genId || "", 
+            row.timestamp || ""
+         ]);
+      });
+    }
+    else if (action === 'GET_GEN_LOGS') {
+       var sheet = ensureSheet(ss, "GeneratorLogs");
+       result.logs = getLastRows(sheet, 500);
+    }
+
+    // --- CONFIGURATION GETTERS ---
+    else if (action === 'GET_MACHINES') {
+      var sheet = ensureSheet(ss, "Machines");
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(["ID", "Name", "Type", "Setpoint"]);
+        sheet.appendRow(["cf-01", "Chest Freezer 01", "FREEZER", "-18"]);
+      }
+      result.machines = getDataList(sheet);
+    }
+    else if (action === 'GET_METERS') {
+      var sheet = ensureSheet(ss, "Meters");
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(["ID", "Name"]);
+        var defaults = [
+          ["m-01", "Main Meter"], ["m-02", "Load 1"], ["m-03", "Load 2"], 
+          ["m-04", "Female Hostel"], ["m-05", "Male Hostel"], ["m-06", "Warehouse"],
+          ["m-07", "Office"], ["m-08", "K1"], ["m-09", "K2"], ["m-10", "Solar Power"]
+        ];
+        defaults.forEach(function(r) { sheet.appendRow(r); });
+      }
+      result.meters = getDataList(sheet);
+    }
+    else if (action === 'GET_GENERATORS') {
+      var sheet = ensureSheet(ss, "Generators");
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(["Name", "Model", "Air Filter", "Oil Filter", "Fuel Filter", "Fan Belt", "Fuel Water Separator"]);
+        var gens = [
+          ["KMD", "Pai Kane", "A-5541-S", "C-1701", "FC-52040", "", ""],
+          ["HLD", "Gesan", "A-7003-S", "C-5102, C-7103", "EF-51040", "", ""],
+          ["LMD", "Denyo", "A-5628", "O-1314, BO-177", "F-1303", "B-50", ""],
+          ["Sule", "Gesan", "WHK 1930587, A-7003-S", "C-5102", "EF-51040", "EO 8.5L, CL 14L", ""],
+          ["BAK", "Gesan", "WHK 1930587, A-7003-S", "C-5102", "EF-51040", "", ""],
+          ["TSL", "Denyo", "HMG-056D, K-1530, A-5558", "O1301", "BF-101", "RECMF-8480", ""],
+          ["TGG", "Pai Kane 30kva", "A-8506-S", "C-1701", "FC-52040", "", "F-1004"],
+          ["SBT", "Denyo", "A-5628", "O-13254", "FC-1503", "B-50", ""],
+          ["SPT", "Pai Kane", "A-5541-S", "C-1701", "FC-52040", "", ""],
+          ["ND", "Denyo", "A-1014", "BO-177", "FC-1004, FC-1020", "RECMF-8480", ""],
+          ["ZM", "Gesan", "WHK 1930587, A-7003-S", "C-5102", "EF-51040", "", ""],
+          ["HW", "Denyo", "A-6012", "CO-1304", "FC-1503", "", ""],
+          ["TKT", "Gesan", "AS-51540", "C-1142", "FC-1702", "RECMF 6385", ""],
+          ["IS", "Denyo", "A1176", "O1301", "F-1303", "B-50", ""],
+          ["MNG", "Denyo", "A-5628", "BO-177", "F-1303", "RCMF 8500", ""],
+          ["Parami", "Gesan", "A-8506-S", "C-5102", "EF 51040", "RECMF 6530", ""],
+          ["K1", "Kohler", "A-2418", "C-5501*2, C-5717", "FC-7108/ FC-7104", "41468/ 330051537", "SFC-7103-30, GM41512"],
+          ["K2", "Kohler", "A-2418", "C-5501*2, C-5717", "FC-7108/ FC-7105", "41468/ 330051537", "SFC-7103-30, GM41512"]
+        ];
+        gens.forEach(function(r){ sheet.appendRow(r); });
+      }
+      result.generators = getDataList(sheet);
+    }
     
-    // ----------------------------------------
-    // ACTION: ADD_USER
-    // ----------------------------------------
+    // --- USER MGMT ---
     else if (action === 'ADD_USER') {
       var sheet = ensureSheet(ss, "Users");
-      if (sheet.getLastRow() === 0) {
-        sheet.appendRow(["Username", "Password", "Name", "Role"]);
-      }
+      if (sheet.getLastRow() === 0) sheet.appendRow(["Username", "Password", "Name", "Role"]);
       var user = payload.user;
-      // Check duplicate
       var data = sheet.getDataRange().getValues();
       var exists = false;
       for (var i = 1; i < data.length; i++) {
         if (data[i][0] == user.username) { exists = true; break; }
       }
-      if (!exists) {
-        sheet.appendRow([user.username, user.password, user.name, user.role]);
-      }
+      if (!exists) sheet.appendRow([user.username, user.password, user.name, user.role]);
     }
-    
-    // ----------------------------------------
-    // ACTION: DELETE_USER
-    // ----------------------------------------
     else if (action === 'DELETE_USER') {
       var sheet = ensureSheet(ss, "Users");
       var username = payload.username;
       var data = sheet.getDataRange().getValues();
       for (var i = data.length - 1; i >= 1; i--) {
-        if (data[i][0] == username) {
-          sheet.deleteRow(i + 1);
-        }
+        if (data[i][0] == username) sheet.deleteRow(i + 1);
       }
     }
-    
-    // ----------------------------------------
-    // ACTION: GET_USERS
-    // ----------------------------------------
     else if (action === 'GET_USERS') {
       var sheet = ensureSheet(ss, "Users");
-      var rows = sheet.getDataRange().getValues();
-      var users = [];
-      // Skip header row
-      for (var i = 1; i < rows.length; i++) {
-        users.push({
-          username: rows[i][0],
-          password: rows[i][1],
-          name: rows[i][2],
-          role: rows[i][3]
-        });
-      }
-      result.users = users;
+      result.users = getDataList(sheet);
     }
 
-    // ----------------------------------------
-    // ACTION: GET_MACHINES
-    // ----------------------------------------
-    else if (action === 'GET_MACHINES') {
-      var sheet = ensureSheet(ss, "Machines");
-      if (sheet.getLastRow() === 0) {
-        // Create Headers and default if empty
-        sheet.appendRow(["ID", "Name", "Type", "Setpoint"]);
-        sheet.appendRow(["cf-01", "Chest Freezer 01", "FREEZER", "-18"]);
-        sheet.appendRow(["ch-01", "Chiller 01", "CHILLER", "4"]);
+    // --- APP CONFIG (API KEYS) ---
+    else if (action === 'GET_CONFIG') {
+      var sheet = ensureSheet(ss, "Config");
+      if (sheet.getLastRow() === 0) sheet.appendRow(["Key", "Value"]);
+      var data = sheet.getDataRange().getValues();
+      var config = {};
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0]) config[data[i][0]] = data[i][1];
       }
-      var rows = sheet.getDataRange().getValues();
-      var machines = [];
-      // Skip header row
-      for (var i = 1; i < rows.length; i++) {
-        // Ensure we have an ID and Name
-        if(rows[i][0] && rows[i][1]) {
-           machines.push({
-            id: rows[i][0],
-            name: rows[i][1],
-            type: rows[i][2],
-            defaultSetpoint: rows[i][3]
-          });
+      result.config = config;
+    }
+    else if (action === 'SET_CONFIG') {
+      var sheet = ensureSheet(ss, "Config");
+      var key = payload.key;
+      var val = payload.value;
+      var data = sheet.getDataRange().getValues();
+      var found = false;
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == key) {
+           sheet.getRange(i + 1, 2).setValue(val);
+           found = true;
+           break;
         }
       }
-      result.machines = machines;
+      if (!found) sheet.appendRow([key, val]);
     }
     
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
@@ -156,12 +246,91 @@ function doPost(e) {
   }
 }
 
+// --- HELPERS ---
+
 function ensureSheet(ss, name) {
   var sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    sheet = ss.insertSheet(name);
-  }
+  if (!sheet) sheet = ss.insertSheet(name);
   return sheet;
+}
+
+function processPhoto(base64, filename) {
+  if (!base64) return "";
+  try {
+    var decoded = Utilities.base64Decode(base64);
+    var blob = Utilities.newBlob(decoded, "image/jpeg", filename + ".jpg");
+    var file = DriveApp.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getUrl();
+  } catch (err) {
+    return "Error: " + err.toString();
+  }
+}
+
+function getLastRows(sheet, count) {
+  var rows = sheet.getDataRange().getValues();
+  var out = [];
+  var start = Math.max(1, rows.length - count);
+  for (var i = start; i < rows.length; i++) {
+    if (rows[i][0]) { 
+       var obj = {};
+       if (sheet.getName() === "Logs") {
+         obj = {
+            machineName: rows[i][0], dateStr: rows[i][1], recordedBy: rows[i][2], type: rows[i][3],
+            value: rows[i][4], target: rows[i][5], notes: rows[i][6], ai: rows[i][7], photoUrl: rows[i][8],
+            id: rows[i][9], machineId: rows[i][10], isoTimestamp: rows[i][11]
+         };
+       } else if (sheet.getName() === "MeterLogs") {
+         obj = {
+            dateStr: rows[i][0], meterName: rows[i][1], value: rows[i][2], recordedBy: rows[i][3],
+            photoUrl: rows[i][4], id: rows[i][5], meterId: rows[i][6], isoTimestamp: rows[i][7]
+         };
+       } else if (sheet.getName() === "GeneratorLogs") {
+         obj = {
+            dateStr: rows[i][0], genName: rows[i][1], type: rows[i][2], runHours: rows[i][3], notes: rows[i][4],
+            parts: rows[i][5], recordedBy: rows[i][6], photoUrl: rows[i][7], ai: rows[i][8], id: rows[i][9], genId: rows[i][10], isoTimestamp: rows[i][11]
+         };
+       }
+       out.push(obj);
+    }
+  }
+  return out;
+}
+
+function getDataList(sheet) {
+  var rows = sheet.getDataRange().getValues();
+  var out = [];
+  var headers = rows[0]; 
+  for (var i = 1; i < rows.length; i++) {
+    var obj = {};
+    for (var j = 0; j < headers.length; j++) {
+       var key = headers[j].toString().trim(); // Clean whitespace
+       
+       // --- ROBUST MAPPINGS (v10) ---
+       // Matches loose column names (e.g. "Air Filter" -> "airFilter")
+       var kLower = key.toLowerCase().replace(/\\s/g, ''); // remove spaces, lowercase
+       
+       if (kLower === "id") key = "id";
+       if (kLower === "name" || kLower === "machinename" || kLower === "generatorname") key = "name";
+       if (kLower === "type" || kLower === "machinetype") key = "type";
+       if (kLower === "setpoint" || kLower === "defaultsetpoint") key = "defaultSetpoint";
+       
+       if (kLower === "model" || kLower === "make") key = "model";
+       if (kLower === "airfilter") key = "airFilter";
+       if (kLower === "oilfilter") key = "oilFilter";
+       if (kLower === "fuelfilter") key = "fuelFilter";
+       if (kLower === "fanbelt") key = "fanBelt";
+       if (kLower === "waterseparator" || kLower === "fuelwaterseparator") key = "waterSeparator";
+       
+       obj[key] = rows[i][j];
+    }
+    // Fallback ID for Generators
+    if (sheet.getName() === "Generators" && !obj.id) {
+        obj.id = obj.name;
+    }
+    out.push(obj);
+  }
+  return out;
 }
 `;
 
@@ -197,17 +366,22 @@ export const SheetSetup: React.FC<Props> = ({ onClose }) => {
         </h2>
         
         <div className="space-y-6">
-          <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 text-sm text-orange-800">
-             <h3 className="font-bold flex items-center gap-2 mb-2">
-                <Info size={16}/> ACTION REQUIRED
+          <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 shadow-md">
+             <h3 className="font-bold text-blue-800 flex items-center gap-2 mb-2">
+                <AlertTriangle size={20}/> UPDATE TO v14 (Full Generators)
              </h3>
-             <p className="text-xs mb-2">To enable User Cloud Sync and Machine Configuration, you must update your Google Apps Script:</p>
-             <ol className="list-decimal list-inside text-xs space-y-2 ml-1">
+             <p className="text-sm text-blue-700 font-medium mb-3">
+               Version 14 ensures all 18 generators (K1, K2, Parami, etc.) are created in the "Generators" sheet if it doesn't exist.
+             </p>
+             <ol className="list-decimal list-inside text-xs text-blue-700 space-y-2 ml-1">
                 <li>Copy the <strong>NEW CODE</strong> below.</li>
-                <li>Go to your Sheet &gt; Extensions &gt; Apps Script.</li>
-                <li>Replace all existing code with this new code.</li>
-                <li><strong>Deploy as Web App</strong> &gt; Version: <strong>New</strong> &gt; Update.</li>
-                <li>This will create "Logs", "Users" and "Machines" tabs automatically.</li>
+                <li>Go to Google Sheet &gt; Extensions &gt; Apps Script.</li>
+                <li><strong>Replace ALL existing code</strong>.</li>
+                <li>Click <strong>Deploy</strong> &gt; <strong>New Deployment</strong>.</li>
+                <li>Select Type: <strong>Web App</strong>.</li>
+                <li>Version: <strong>New</strong> (Crucial!).</li>
+                <li>Click <strong>Deploy</strong>.</li>
+                <li className="font-bold">Important: If "Generators" sheet exists but is empty, delete it so the script can recreate it.</li>
              </ol>
           </div>
 
@@ -232,7 +406,7 @@ export const SheetSetup: React.FC<Props> = ({ onClose }) => {
           </form>
 
           <div className="border-t pt-6">
-            <h3 className="text-sm font-bold text-slate-900 mb-2">Google Apps Script Code (v3)</h3>
+            <h3 className="text-sm font-bold text-slate-900 mb-2">Google Apps Script Code (v14)</h3>
             <div className="relative">
               <pre className="bg-slate-100 text-slate-600 p-3 rounded-lg overflow-x-auto font-mono text-[10px] h-48 border border-slate-200">
                 {GAS_SCRIPT_CODE}

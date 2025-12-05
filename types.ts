@@ -1,3 +1,4 @@
+
 export enum MachineType {
   FREEZER = 'FREEZER',
   CHILLER = 'CHILLER'
@@ -5,7 +6,10 @@ export enum MachineType {
 
 export enum RecordType {
   TEMPERATURE = 'TEMPERATURE',
-  MAINTENANCE = 'MAINTENANCE'
+  MAINTENANCE = 'MAINTENANCE',
+  METER_READING = 'METER_READING',
+  GENERATOR_RUN = 'GENERATOR_RUN',
+  GENERATOR_SERVICE = 'GENERATOR_SERVICE'
 }
 
 export interface Machine {
@@ -15,13 +19,31 @@ export interface Machine {
   defaultSetpoint: number;
 }
 
+export interface Meter {
+  id: string;
+  name: string;
+}
+
+export interface Generator {
+  id: string;
+  name: string; // Shop Name (e.g., KMD)
+  model: string; // Generator Name (e.g., Pai Kane)
+  airFilter: string;
+  oilFilter: string;
+  fuelFilter: string;
+  fanBelt: string;
+  waterSeparator: string;
+}
+
 export interface BaseRecord {
   id: string;
-  machineId: string;
+  machineId?: string; 
+  meterId?: string;   
+  generatorId?: string; // Link to specific generator
   timestamp: string; // ISO String
   recordType: RecordType;
   syncedToSheet: boolean;
-  recordedBy?: string; // Name of the user who created the record
+  recordedBy?: string; 
 }
 
 export interface TemperatureRecord extends BaseRecord {
@@ -29,7 +51,7 @@ export interface TemperatureRecord extends BaseRecord {
   currentTemp: number;
   setpointTemp: number;
   notes?: string;
-  isAnomaly?: boolean; // AI Detected
+  isAnomaly?: boolean; 
 }
 
 export interface MaintenanceRecord extends BaseRecord {
@@ -38,10 +60,36 @@ export interface MaintenanceRecord extends BaseRecord {
   severity: 'LOW' | 'MEDIUM' | 'CRITICAL';
   actionTaken?: string;
   aiSuggestedFix?: string;
-  photoData?: string; // Base64 string of the attached image
+  photoData?: string; 
 }
 
-export type LogRecord = TemperatureRecord | MaintenanceRecord;
+export interface MeterRecord extends BaseRecord {
+  recordType: RecordType.METER_READING;
+  meterId: string;
+  value: number;
+  photoData?: string;
+}
+
+export interface GeneratorRunRecord extends BaseRecord {
+  recordType: RecordType.GENERATOR_RUN;
+  generatorId: string;
+  runHours: number;
+  notes?: string;
+}
+
+export interface GeneratorServiceRecord extends BaseRecord {
+  recordType: RecordType.GENERATOR_SERVICE;
+  generatorId: string;
+  serviceType: string; 
+  notes?: string;
+  partsReplaced?: string;
+  nextServiceDue?: string; 
+  photoData?: string;
+  runHours?: number; // Meter reading at time of service
+  aiAdvice?: string; // AI Diagnosis
+}
+
+export type LogRecord = TemperatureRecord | MaintenanceRecord | MeterRecord | GeneratorRunRecord | GeneratorServiceRecord;
 
 export enum UserRole {
   ADMIN = 'ADMIN',
@@ -50,48 +98,45 @@ export enum UserRole {
 
 export interface User {
   username: string;
-  password?: string; // Optional when just listing for display
+  password?: string; 
   name: string;
   role: UserRole;
 }
 
 export const INITIAL_MACHINES: Machine[] = [
-  // Chest Freezers (4 pcs)
-  { id: 'cf-01', name: 'Chest Freezer 01', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: 'cf-02', name: 'Chest Freezer 02', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: 'cf-03', name: 'Chest Freezer 03', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: 'cf-04', name: 'Chest Freezer 04', type: MachineType.FREEZER, defaultSetpoint: -18 },
+  { id: 'cf-01', name: 'Chest Freezer 01', type: MachineType.FREEZER, defaultSetpoint: -18 }
+];
 
-  // HQ 1 door chiller (2 pcs)
-  { id: 'hq1-01', name: 'HQ 1-Door Chiller 01', type: MachineType.CHILLER, defaultSetpoint: 4 },
-  { id: 'hq1-02', name: 'HQ 1-Door Chiller 02', type: MachineType.CHILLER, defaultSetpoint: 4 },
+export const INITIAL_METERS: Meter[] = [
+  { id: 'm-01', name: 'Main Meter' },
+  { id: 'm-02', name: 'Load 1' },
+  { id: 'm-03', name: 'Load 2' },
+  { id: 'm-04', name: 'Female Hostel' },
+  { id: 'm-05', name: 'Male Hostel' },
+  { id: 'm-06', name: 'Warehouse' },
+  { id: 'm-07', name: 'Office' },
+  { id: 'm-08', name: 'K1' },
+  { id: 'm-09', name: 'K2' },
+  { id: 'm-10', name: 'Solar Power' }
+];
 
-  // HQ 2 door chiller (2 pcs)
-  { id: 'hq2-01', name: 'HQ 2-Door Chiller 01', type: MachineType.CHILLER, defaultSetpoint: 4 },
-  { id: 'hq2-02', name: 'HQ 2-Door Chiller 02', type: MachineType.CHILLER, defaultSetpoint: 4 },
-
-  // 4 door freezer (5 pcs)
-  { id: '4df-01', name: '4-Door Freezer 01', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: '4df-02', name: '4-Door Freezer 02', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: '4df-03', name: '4-Door Freezer 03', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: '4df-04', name: '4-Door Freezer 04', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: '4df-05', name: '4-Door Freezer 05', type: MachineType.FREEZER, defaultSetpoint: -18 },
-
-  // 6 door freezer (1 pc)
-  { id: '6df-01', name: '6-Door Freezer 01', type: MachineType.FREEZER, defaultSetpoint: -18 },
-
-  // Deep freezer (5 pcs) - Assuming colder setpoint
-  { id: 'df-01', name: 'Deep Freezer 01', type: MachineType.FREEZER, defaultSetpoint: -25 },
-  { id: 'df-02', name: 'Deep Freezer 02', type: MachineType.FREEZER, defaultSetpoint: -25 },
-  { id: 'df-03', name: 'Deep Freezer 03', type: MachineType.FREEZER, defaultSetpoint: -25 },
-  { id: 'df-04', name: 'Deep Freezer 04', type: MachineType.FREEZER, defaultSetpoint: -25 },
-  { id: 'df-05', name: 'Deep Freezer 05', type: MachineType.FREEZER, defaultSetpoint: -25 },
-
-  // Cold store (1 pc)
-  { id: 'cs-01', name: 'Cold Store 01', type: MachineType.FREEZER, defaultSetpoint: -20 },
-
-  // Container cold store (3 pcs)
-  { id: 'ccs-01', name: 'Container Cold Store 01', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: 'ccs-02', name: 'Container Cold Store 02', type: MachineType.FREEZER, defaultSetpoint: -18 },
-  { id: 'ccs-03', name: 'Container Cold Store 03', type: MachineType.FREEZER, defaultSetpoint: -18 },
+export const INITIAL_GENERATORS: Generator[] = [
+  { id: 'KMD', name: 'KMD', model: 'Pai Kane', airFilter: 'A-5541-S', oilFilter: 'C-1701', fuelFilter: 'FC-52040', fanBelt: '', waterSeparator: '' },
+  { id: 'HLD', name: 'HLD', model: 'Gesan', airFilter: 'A-7003-S', oilFilter: 'C-5102, C-7103', fuelFilter: 'EF-51040', fanBelt: '', waterSeparator: '' },
+  { id: 'LMD', name: 'LMD', model: 'Denyo', airFilter: 'A-5628', oilFilter: 'O-1314, BO-177', fuelFilter: 'F-1303', fanBelt: 'B-50', waterSeparator: '' },
+  { id: 'Sule', name: 'Sule', model: 'Gesan', airFilter: 'WHK 1930587, A-7003-S', oilFilter: 'C-5102', fuelFilter: 'EF-51040', fanBelt: 'EO 8.5L, CL 14L', waterSeparator: '' },
+  { id: 'BAK', name: 'BAK', model: 'Gesan', airFilter: 'WHK 1930587, A-7003-S', oilFilter: 'C-5102', fuelFilter: 'EF-51040', fanBelt: '', waterSeparator: '' },
+  { id: 'TSL', name: 'TSL', model: 'Denyo', airFilter: 'HMG-056D, K-1530, A-5558', oilFilter: 'O1301', fuelFilter: 'BF-101', fanBelt: 'RECMF-8480', waterSeparator: '' },
+  { id: 'TGG', name: 'TGG', model: 'Pai Kane 30kva', airFilter: 'A-8506-S', oilFilter: 'C-1701', fuelFilter: 'FC-52040', fanBelt: '', waterSeparator: 'F-1004' },
+  { id: 'SBT', name: 'SBT', model: 'Denyo', airFilter: 'A-5628', oilFilter: 'O-13254', fuelFilter: 'FC-1503', fanBelt: 'B-50', waterSeparator: '' },
+  { id: 'SPT', name: 'SPT', model: 'Pai Kane', airFilter: 'A-5541-S', oilFilter: 'C-1701', fuelFilter: 'FC-52040', fanBelt: '', waterSeparator: '' },
+  { id: 'ND', name: 'ND', model: 'Denyo', airFilter: 'A-1014', oilFilter: 'BO-177', fuelFilter: 'FC-1004, FC-1020', fanBelt: 'RECMF-8480', waterSeparator: '' },
+  { id: 'ZM', name: 'ZM', model: 'Gesan', airFilter: 'WHK 1930587, A-7003-S', oilFilter: 'C-5102', fuelFilter: 'EF-51040', fanBelt: '', waterSeparator: '' },
+  { id: 'HW', name: 'HW', model: 'Denyo', airFilter: 'A-6012', oilFilter: 'CO-1304', fuelFilter: 'FC-1503', fanBelt: '', waterSeparator: '' },
+  { id: 'TKT', name: 'TKT', model: 'Gesan', airFilter: 'AS-51540', oilFilter: 'C-1142', fuelFilter: 'FC-1702', fanBelt: 'RECMF 6385', waterSeparator: '' },
+  { id: 'IS', name: 'IS', model: 'Denyo', airFilter: 'A1176', oilFilter: 'O1301', fuelFilter: 'F-1303', fanBelt: 'B-50', waterSeparator: '' },
+  { id: 'MNG', name: 'MNG', model: 'Denyo', airFilter: 'A-5628', oilFilter: 'BO-177', fuelFilter: 'F-1303', fanBelt: 'RCMF 8500', waterSeparator: '' },
+  { id: 'Parami', name: 'Parami', model: 'Gesan', airFilter: 'A-8506-S', oilFilter: 'C-5102', fuelFilter: 'EF 51040', fanBelt: 'RECMF 6530', waterSeparator: '' },
+  { id: 'K1', name: 'K1', model: 'Kohler', airFilter: 'A-2418', oilFilter: 'C-5501*2, C-5717', fuelFilter: 'FC-7108/ FC-7104', fanBelt: '41468/ 330051537', waterSeparator: 'SFC-7103-30, GM41512' },
+  { id: 'K2', name: 'K2', model: 'Kohler', airFilter: 'A-2418', oilFilter: 'C-5501*2, C-5717', fuelFilter: 'FC-7108/ FC-7105', fanBelt: '41468/ 330051537', waterSeparator: 'SFC-7103-30, GM41512' }
 ];
